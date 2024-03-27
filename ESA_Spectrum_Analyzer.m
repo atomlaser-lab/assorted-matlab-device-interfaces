@@ -59,7 +59,7 @@ classdef ESA_Spectrum_Analyzer < handle
             %   argument list as for SET_GPIB_PROPERTIES
             self.set_gpib_properties(varargin{:});
 
-            if isempty(self.conn) || ~isvalid(obj)
+            if isempty(self.conn) || ~isvalid(self.conn)
                 gpib_device = self.find_device();
                 if isempty(gpib_device)
                     self.conn = gpib(self.gpib_driver,self.gpib_board,self.gpib_address);
@@ -69,7 +69,7 @@ classdef ESA_Spectrum_Analyzer < handle
             end
 
             if ~self.isopen()
-                self.InputBufferSize = 2^20;
+                self.conn.InputBufferSize = 2^20;
                 fopen(self.conn);
             end
         end
@@ -194,18 +194,48 @@ classdef ESA_Spectrum_Analyzer < handle
             %   amplitude
             y = sscanf(self.ask(':calc:mark1:y?'),'%e');
         end
+        
+        function self = set_measurement_settings(self,varargin)
+            if mod(numel(varargin),2) ~= 0
+                error('Arguments must appear in name/value pairs!');
+            else
+                for nn = 1:2:numel(varargin)
+                    v = varargin{nn + 1};
+                    switch lower(varargin{nn})
+                        case {'center','cent','freq','frequency'}
+                            self.set_center_frequency(v);
+                        case 'span'
+                            self.set_span(v);
+                        case {'rbw','bandwidth','resolution','res'}
+                            self.set_bandwidth(v);
+                    end
+                end
+            end
+        end
+        
+        function P = get_power_at_freq(self,freq,varargin)
+            self.set_measurement_settings(varargin{:});
+            self.set_center_frequency(freq);
+            self.set_marker_x(freq);
+            pause(1);
+            P = self.get_marker_y();
+        end
 
-        function [f,P] = get_trace(self)
-            %GET_TRACE Returns the current trace
+        function [f,P] = get_trace(self,varargin)
+            %GET_TRACE Returns the values in trace1
             %
             %   [F,P] = GET_TRACE(SELF) returns frequency and power vectors
             %   F and P
+            self.set_measurement_settings(varargin{:});
+            pause(1);
             center_frequency = self.get_center_frequency();
             span = self.get_span();
-            
-            P = sscanf(self.cmd(':TRACE:DATA? RAWTRACE'),'%e,',[1,Inf]);
-            f = center_frequency + span/2*linspace(-1,1,numel(P));
+            self.cmd(':TRACE:DATA? TRACE1');
+            s = fscanf(self.conn);
+            P = sscanf(s,'%e,',[1,Inf])';
+            f = center_frequency + span/2*linspace(-1,1,numel(P))';
         end
+        
 
     end
 
